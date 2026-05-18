@@ -117,6 +117,8 @@ function initEditor(model) {
     backgroundColor: "#ffffff",
     enableRetinaScaling: false,
     imageSmoothingEnabled: true,
+    allowTouchScrolling: false,
+    stopContextMenu: true,
   });
 
   const ctx = canvas.getContext();
@@ -141,6 +143,7 @@ function initEditor(model) {
   canvas.on("text:editing:exited", onTextEditingExited);
 
   patchCanvasPointer(canvas);
+  applyMobileCanvasDefaults();
 
   document.addEventListener("keydown", onKeyDown);
 
@@ -152,6 +155,7 @@ function initEditor(model) {
     if (mobile !== lastMobileViewport) {
       lastMobileViewport = mobile;
       zoomLevel = getDefaultZoomLevel();
+      applyMobileCanvasDefaults();
     }
     fitCanvasToViewport();
   };
@@ -228,16 +232,52 @@ function loadBackground(url, width, height) {
   });
 }
 
+function getEventClientXY(e) {
+  if (e.touches && e.touches.length > 0) {
+    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  if (e.changedTouches && e.changedTouches.length > 0) {
+    return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
 function patchCanvasPointer(c) {
   c._cssScale = 1;
-  c.getPointer = function (e) {
+  c.getPointer = function (e, fromViewport) {
     const scale = c._cssScale || 1;
     const rect = c.upperCanvasEl.getBoundingClientRect();
-    return {
-      x: (e.clientX - rect.left) / scale,
-      y: (e.clientY - rect.top) / scale,
-    };
+    const point = getEventClientXY(e);
+    const x = (point.x - rect.left) / scale;
+    const y = (point.y - rect.top) / scale;
+    if (fromViewport) {
+      return { x, y };
+    }
+    return { x, y };
   };
+}
+
+function applyMobileCanvasDefaults() {
+  if (isMobileViewport()) {
+    fabric.Object.prototype.set({
+      cornerSize: 22,
+      touchCornerSize: 28,
+      padding: 8,
+    });
+    if (canvas) {
+      canvas.allowTouchScrolling = false;
+      canvas.targetFindTolerance = 12;
+    }
+  } else {
+    fabric.Object.prototype.set({
+      cornerSize: 13,
+      touchCornerSize: 24,
+      padding: 0,
+    });
+    if (canvas) {
+      canvas.targetFindTolerance = 4;
+    }
+  }
 }
 
 function fitCanvasToViewport() {
@@ -412,8 +452,11 @@ function onTextEditingEntered(e) {
 
 function onTextEditingExited(e) {
   const text = e.target;
+  text.set({ selectable: true, evented: true });
   text.initDimensions();
   text.setCoords();
+  canvas.setActiveObject(text);
+  canvas.renderAll();
   syncTextToPanel(text);
   onCanvasChange();
 }
