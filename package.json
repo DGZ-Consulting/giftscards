@@ -1,0 +1,12 @@
+{
+  "name": "giftcard-editor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Editor visual de gift cards para restaurantes",
+  "scripts": {
+    "dev": "npx --yes serve . -l 3000",
+    "build": "node -e \"console.log('Sitio estático listo para Vercel')\""
+  },
+  "keywords": ["gift-card", "editor", "fabric.js"],
+  "license": "UNLICENSED"
+}

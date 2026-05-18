@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gift Card Editor</title>
+  <link rel="icon" href="modelos/regalito.png" type="image/png" />
+  <link rel="apple-touch-icon" href="modelos/regalito.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Dancing+Script:wght@400;700&family=Great+Vibes&family=Lora:ital,wght@0,400;0,700;1,400&family=Montserrat:ital,wght@0,400;0,600;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <script>
+    (function () {
+      var hash = window.location.hash;
+      var params = new URLSearchParams(window.location.search);
+      var legacy = params.get("modelo");
+      if (legacy && !hash) {
+        window.location.replace(window.location.pathname + "#/editor/" + legacy);
+        return;
+      }
+      if (!hash) {
+        var saved = sessionStorage.getItem("giftcard_active_model");
+        if (saved) window.location.hash = "#/editor/" + saved;
+      }
+    })();
+  </script>
+</head>
+<body>
+  <section id="gallery-view" class="view">
+    <header class="gallery-header">
+      <div class="brand">
+        <img class="brand-icon" src="modelos/regalito.png" alt="" width="40" height="40" />
+        <h1>Editor de Gift Cards</h1>
+      </div>
+      <p class="subtitle">Elige un modelo base y personalízalo libremente</p>
+    </header>
+    <main class="gallery-grid" id="gallery-grid"></main>
+  </section>
+
+  <section id="editor-view" class="view hidden">
+    <header class="editor-topbar">
+      <button type="button" class="btn btn-ghost" id="btn-back-gallery" title="Volver a modelos">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Modelos
+      </button>
+      <span class="model-label" id="model-label"></span>
+      <div class="topbar-actions">
+        <button type="button" class="btn btn-secondary" id="btn-save-draft" title="Guarda en esta sesión del navegador. No es permanente.">
+          Guardar borrador
+        </button>
+        <button type="button" class="btn btn-secondary" id="btn-undo" title="Deshacer">↶ Deshacer</button>
+        <button type="button" class="btn btn-secondary" id="btn-redo" title="Rehacer">↷ Rehacer</button>
+        <button type="button" class="btn btn-primary" id="btn-export">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Exportar PNG
+        </button>
+      </div>
+    </header>
+    <p class="draft-notice">El borrador solo se guarda en este navegador mientras editas. No es un guardado permanente.</p>
+    <div id="editor-toast" class="editor-toast hidden" role="status"></div>
+
+    <div class="editor-layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <h3>Elementos</h3>
+          <button type="button" class="tool-btn" id="btn-add-text">
+            <span class="tool-icon">T</span>
+            <span>Texto</span>
+          </button>
+          <button type="button" class="tool-btn" id="btn-add-number">
+            <span class="tool-icon">#</span>
+            <span>Número</span>
+          </button>
+        </div>
+
+        <div class="sidebar-section" id="symbols-panel">
+          <h3>Símbolos y emojis</h3>
+          <div class="symbol-tabs">
+            <button type="button" class="symbol-tab active" data-tab="emoji">Emojis</button>
+            <button type="button" class="symbol-tab" data-tab="symbols">Símbolos</button>
+          </div>
+          <div class="symbol-grid" id="emoji-grid"></div>
+          <div class="symbol-grid hidden" id="symbols-grid"></div>
+        </div>
+      </aside>
+
+      <main class="canvas-area">
+        <div class="canvas-viewport" id="canvas-viewport">
+          <div class="canvas-scaler" id="canvas-scaler">
+            <canvas id="gift-canvas"></canvas>
+          </div>
+        </div>
+        <div class="zoom-toolbar">
+          <button type="button" class="zoom-btn" id="btn-zoom-out" title="Alejar">−</button>
+          <input type="range" id="zoom-slider" min="25" max="150" value="68" step="1" aria-label="Zoom" />
+          <span class="zoom-label" id="zoom-label">68%</span>
+          <button type="button" class="zoom-btn" id="btn-zoom-in" title="Acercar">+</button>
+          <button type="button" class="btn btn-ghost zoom-fit-btn" id="btn-zoom-reset" title="Tamaño por defecto">Restablecer</button>
+        </div>
+      </main>
+
+      <aside class="properties-panel" id="properties-panel">
+        <h3>Propiedades</h3>
+        <p class="no-selection" id="no-selection">Selecciona un elemento para editarlo</p>
+
+        <div class="props-content hidden" id="props-content">
+          <label class="field">
+            <span>Texto</span>
+            <textarea id="prop-text" rows="3"></textarea>
+          </label>
+
+          <label class="field">
+            <span>Fuente</span>
+            <select id="prop-font"></select>
+          </label>
+
+          <div class="field-row">
+            <label class="field flex">
+              <span>Tamaño</span>
+              <input type="number" id="prop-size" min="8" max="400" value="32" />
+            </label>
+            <label class="field flex">
+              <span>Color</span>
+              <input type="color" id="prop-color" value="#55330e" />
+            </label>
+          </div>
+
+          <div class="style-row">
+            <button type="button" class="style-btn" id="btn-bold" title="Negrita"><b>B</b></button>
+            <button type="button" class="style-btn" id="btn-italic" title="Cursiva"><i>I</i></button>
+            <button type="button" class="style-btn" id="btn-underline" title="Subrayado"><u>U</u></button>
+            <button type="button" class="style-btn" id="btn-linethrough" title="Tachado"><s>S</s></button>
+          </div>
+
+          <div class="align-section">
+            <span class="field-label">Alineación en lienzo</span>
+            <div class="align-grid">
+              <button type="button" class="align-btn" data-align="left" title="Izquierda">⬅</button>
+              <button type="button" class="align-btn" data-align="center-h" title="Centro horizontal">↔</button>
+              <button type="button" class="align-btn" data-align="right" title="Derecha">➡</button>
+              <button type="button" class="align-btn" data-align="top" title="Arriba">⬆</button>
+              <button type="button" class="align-btn" data-align="center-v" title="Centro vertical">↕</button>
+              <button type="button" class="align-btn" data-align="bottom" title="Abajo">⬇</button>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>Opacidad</span>
+            <input type="range" id="prop-opacity" min="0" max="100" value="100" />
+          </label>
+
+          <label class="field">
+            <span>Rotación (°)</span>
+            <input type="range" id="prop-angle" min="-180" max="180" value="0" />
+          </label>
+
+          <div class="action-row">
+            <button type="button" class="btn btn-sm" id="btn-duplicate">Duplicar</button>
+            <button type="button" class="btn btn-sm btn-danger" id="btn-delete">Eliminar</button>
+          </div>
+
+          <div class="layer-section">
+            <span class="field-label">Capas</span>
+            <div class="layer-row">
+              <button type="button" class="btn btn-sm" id="btn-forward">↑ Adelante</button>
+              <button type="button" class="btn btn-sm" id="btn-backward">↓ Atrás</button>
+              <button type="button" class="btn btn-sm" id="btn-front">⤒ Frente</button>
+              <button type="button" class="btn btn-sm" id="btn-send-back">⤓ Fondo</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <script src="js/models.js"></script>
+  <script src="js/editor.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
