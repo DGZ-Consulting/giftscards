@@ -8,6 +8,7 @@ const EXPORT_FORMAT = "png";
 const EXPORT_QUALITY = 1;
 
 const ZOOM_DEFAULT = 0.68;
+const ZOOM_MOBILE_DEFAULT = 1;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 1.5;
 const ZOOM_STEP = 0.08;

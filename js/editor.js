@@ -5,6 +5,8 @@ let viewportScale = 1;
 let maxFitScale = 1;
 let zoomLevel = ZOOM_DEFAULT;
 let resizeObserver = null;
+let lastMobileViewport = null;
+let onWindowResize = null;
 let history = [];
 let historyIndex = -1;
 let isRestoringHistory = false;
@@ -93,9 +95,17 @@ function clearEditorSession() {
   sessionStorage.removeItem(STORAGE_ACTIVE_MODEL);
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function getDefaultZoomLevel() {
+  return isMobileViewport() ? ZOOM_MOBILE_DEFAULT : ZOOM_DEFAULT;
+}
+
 function initEditor(model) {
   currentModel = model;
-  zoomLevel = ZOOM_DEFAULT;
+  zoomLevel = getDefaultZoomLevel();
   disposeCanvas();
 
   const el = document.getElementById("gift-canvas");
@@ -136,8 +146,16 @@ function initEditor(model) {
 
   loadBackground(model.file, model.width, model.height);
   populateFontSelect();
-  fitCanvasToViewport();
-  window.addEventListener("resize", fitCanvasToViewport);
+  lastMobileViewport = isMobileViewport();
+  onWindowResize = () => {
+    const mobile = isMobileViewport();
+    if (mobile !== lastMobileViewport) {
+      lastMobileViewport = mobile;
+      zoomLevel = getDefaultZoomLevel();
+    }
+    fitCanvasToViewport();
+  };
+  window.addEventListener("resize", onWindowResize);
 
   const area = document.querySelector(".canvas-area");
   if (area && typeof ResizeObserver !== "undefined") {
@@ -153,7 +171,10 @@ function disposeCanvas() {
   }
   if (canvas) {
     document.removeEventListener("keydown", onKeyDown);
-    window.removeEventListener("resize", fitCanvasToViewport);
+    if (onWindowResize) {
+      window.removeEventListener("resize", onWindowResize);
+      onWindowResize = null;
+    }
     canvas.dispose();
     canvas = null;
   }
@@ -167,34 +188,44 @@ function disposeCanvas() {
 }
 
 function loadBackground(url, width, height) {
-  fabric.Image.fromURL(
-    url,
-    (img) => {
-      if (!canvas) return;
-      img.set({
-        left: 0,
-        top: 0,
-        selectable: false,
-        evented: false,
-        hasControls: false,
-        hasBorders: false,
-        lockMovementX: true,
-        lockMovementY: true,
-      });
-      img.set({
-        originX: "left",
-        originY: "top",
-        scaleX: width / img.width,
-        scaleY: height / img.height,
-      });
-      canvas.setBackgroundImage(img, () => {
-        canvas.renderAll();
-        loadDraft(currentModel.id);
-        requestAnimationFrame(fitCanvasToViewport);
-      });
-    },
-    { crossOrigin: "anonymous" }
-  );
+  fabric.Image.fromURL(url, (img) => {
+    if (!canvas) return;
+
+    if (!img) {
+      showEditorToast("No se pudo cargar la imagen del modelo.", true);
+      saveHistory();
+      return;
+    }
+
+    img.set({
+      left: 0,
+      top: 0,
+      originX: "left",
+      originY: "top",
+      selectable: false,
+      evented: false,
+      hasControls: false,
+      hasBorders: false,
+      lockMovementX: true,
+      lockMovementY: true,
+    });
+
+    const naturalW = img.width || img._originalElement?.naturalWidth || width;
+    const naturalH = img.height || img._originalElement?.naturalHeight || height;
+
+    if (naturalW !== width || naturalH !== height) {
+      img.scaleToWidth(width);
+      if (Math.abs(img.getScaledHeight() - height) > 1) {
+        img.scaleToHeight(height);
+      }
+    }
+
+    canvas.setBackgroundImage(img, () => {
+      canvas.renderAll();
+      loadDraft(currentModel.id);
+      requestAnimationFrame(fitCanvasToViewport);
+    });
+  });
 }
 
 function patchCanvasPointer(c) {
@@ -216,8 +247,8 @@ function fitCanvasToViewport() {
   const toolbar = document.querySelector(".zoom-toolbar");
   if (!area) return;
 
-  const padding = 48;
-  const toolbarH = toolbar ? toolbar.offsetHeight + 16 : 0;
+  const padding = isMobileViewport() ? 8 : 48;
+  const toolbarH = toolbar ? toolbar.offsetHeight + (isMobileViewport() ? 8 : 16) : 0;
   const maxW = area.clientWidth - padding;
   const maxH = area.clientHeight - toolbarH - padding;
 
@@ -285,7 +316,7 @@ function zoomOut() {
 }
 
 function zoomReset() {
-  setZoomLevel(ZOOM_DEFAULT);
+  setZoomLevel(getDefaultZoomLevel());
 }
 
 function updateZoomUI() {
@@ -390,16 +421,21 @@ function onTextEditingExited(e) {
 function updatePropertiesPanel() {
   const noSel = document.getElementById("no-selection");
   const props = document.getElementById("props-content");
+  const panel = document.getElementById("properties-panel");
   const text = getActiveText();
 
   if (!text) {
     noSel.classList.remove("hidden");
     props.classList.add("hidden");
+    panel?.classList.remove("mobile-open");
     return;
   }
 
   noSel.classList.add("hidden");
   props.classList.remove("hidden");
+  if (isMobileViewport()) {
+    panel?.classList.add("mobile-open");
+  }
 
   syncTextToPanel(text);
   document.getElementById("prop-font").value = text.fontFamily || "Montserrat";
@@ -565,19 +601,29 @@ function exportImage() {
     }
   }
 
-  fabric.Image.fromURL(
-    currentModel.file,
-    (bgImg) => {
-      bgImg.set({
-        left: 0,
-        top: 0,
-        originX: "left",
-        originY: "top",
-        scaleX: w / bgImg.width,
-        scaleY: h / bgImg.height,
-      });
+  fabric.Image.fromURL(currentModel.file, (bgImg) => {
+    if (!bgImg) {
+      showEditorToast("No se pudo cargar la imagen para exportar.", true);
+      if (btn) btn.disabled = false;
+      exportCanvas.dispose();
+      return;
+    }
 
-      exportCanvas.setBackgroundImage(bgImg, () => {
+    bgImg.set({
+      left: 0,
+      top: 0,
+      originX: "left",
+      originY: "top",
+    });
+
+    if (bgImg.width !== w || bgImg.height !== h) {
+      bgImg.scaleToWidth(w);
+      if (Math.abs(bgImg.getScaledHeight() - h) > 1) {
+        bgImg.scaleToHeight(h);
+      }
+    }
+
+    exportCanvas.setBackgroundImage(bgImg, () => {
         const finishExport = () => {
           exportCanvas.renderAll();
 
@@ -608,9 +654,7 @@ function exportImage() {
           finishExport();
         });
       });
-    },
-    { crossOrigin: "anonymous" }
-  );
+  });
 }
 
 function saveHistory() {
